@@ -14,12 +14,14 @@ import {
   getInstagramConnectUrl,
   getMetaConfig,
   getRecentMetaWebhookEvents,
+  getHookGenerationContext,
   getOnboarding,
   getSessionFromAuthHeader,
   classifyCommentPreview,
   completeMetaConnection,
   processPendingMetaWebhookEvents,
   recordMetaWebhookEvent,
+  runManagedIngestionJob,
   saveInstagramAccount,
   saveCommentAutomation,
   saveGeneratedHookToPlanner,
@@ -368,16 +370,18 @@ app.post('/api/hooks/generate', async (req, res) => {
     return
   }
 
-  const onboarding = await getOnboarding()
+  const context = await getHookGenerationContext(parsed.data.workspaceId)
 
   res.json(
     await generateHooksAndCtas({
-      brandName: onboarding.brandName,
-      niche: onboarding.niche,
-      goal: onboarding.goal,
-      salesLink: onboarding.salesLink,
-      courseLink: onboarding.courseLink,
-      communityLink: onboarding.communityLink,
+      brandName: context.brandName,
+      niche: context.niche,
+      goal: context.goal,
+      salesLink: context.salesLink,
+      courseLink: context.courseLink,
+      communityLink: context.communityLink,
+      handle: context.handle,
+      recentCaptions: context.recentCaptions,
     }),
   )
 })
@@ -579,7 +583,7 @@ app.post('/api/ingestion-jobs/run', async (req, res) => {
   }
 
   const onboarding = await getOnboarding()
-  const newJob = await createIngestionJob(
+  const newJob = await runManagedIngestionJob(
     parsed.data.type,
     parsed.data.workspaceId ?? onboarding.workspaceId,
   )

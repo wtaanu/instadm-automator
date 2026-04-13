@@ -201,6 +201,29 @@ function App() {
   const [savingHookTitle, setSavingHookTitle] = useState<string | null>(null)
   const [selectedPlannerId, setSelectedPlannerId] = useState<string | null>(null)
   const [savingPlanner, setSavingPlanner] = useState(false)
+  const [generatingHooks, setGeneratingHooks] = useState(false)
+
+  const refreshWorkspaceData = async (workspaceId?: string) => {
+    const [dashboardPayload, jobsPayload] = await Promise.all([
+      getDashboardData(),
+      getIngestionJobs(),
+    ])
+
+    setData(dashboardPayload)
+    setJobs(jobsPayload)
+
+    if (!workspaceId) {
+      return
+    }
+
+    const [accountsPayload, automationPayload] = await Promise.all([
+      getInstagramAccounts(workspaceId),
+      getCommentAutomation(workspaceId),
+    ])
+
+    setInstagramAccounts(accountsPayload)
+    setCommentAutomation(automationPayload)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -409,12 +432,7 @@ function App() {
         accountId,
       })
       setSyncResult(result)
-      const accounts = await getInstagramAccounts(onboarding.workspaceId)
-      setInstagramAccounts(accounts)
-      const automation = await getCommentAutomation(onboarding.workspaceId)
-      setCommentAutomation(automation)
-      const refreshedJobs = await getIngestionJobs()
-      setJobs(refreshedJobs)
+      await refreshWorkspaceData(onboarding.workspaceId)
     } finally {
       setSyncingInstagram(false)
     }
@@ -422,9 +440,12 @@ function App() {
 
   const handleRunJob = async (type: IngestionJob['type']) => {
     setRunningJob(type)
-    const job = await runIngestionJob(type, onboarding?.workspaceId)
-    setJobs((current) => [job, ...current])
-    setRunningJob(null)
+    try {
+      await runIngestionJob(type, onboarding?.workspaceId)
+      await refreshWorkspaceData(onboarding?.workspaceId)
+    } finally {
+      setRunningJob(null)
+    }
   }
 
   const handleAutomationSubmit = async (formData: FormData) => {
@@ -488,9 +509,14 @@ function App() {
       return
     }
 
-    void generateHooks({ workspaceId: onboarding.workspaceId }).then((items) => {
-      setHookItems(items.length ? items : createHookVariants(data.generatedHooks, Date.now()))
-    })
+    setGeneratingHooks(true)
+    void generateHooks({ workspaceId: onboarding.workspaceId })
+      .then((items) => {
+        setHookItems(items.length ? items : createHookVariants(data.generatedHooks, Date.now()))
+      })
+      .finally(() => {
+        setGeneratingHooks(false)
+      })
   }
 
   const handleCopyHook = async (hook: { title: string; copy: string }) => {
@@ -509,6 +535,7 @@ function App() {
         hook,
       })
 
+      await refreshWorkspaceData(onboarding.workspaceId)
       const refreshed = await getDashboardData()
       setData(refreshed)
       if (refreshed.planner.length) {
@@ -539,6 +566,7 @@ function App() {
         contentCopy: String(formData.get('contentCopy') ?? ''),
       })
 
+      await refreshWorkspaceData(onboarding?.workspaceId)
       const refreshed = await getDashboardData()
       setData(refreshed)
       setSelectedPlannerId(selectedPlannerItem.id)
@@ -817,7 +845,7 @@ function App() {
 
             <section className="chart-panel chart-panel--half">
               <PanelHeader title="Trend Signals" subtitle="What to create next" />
-              <div className="compact-list">
+              <div className="compact-list compact-list--single">
                 {data.trends.map((trend) => (
                   <TrendCard key={trend.title} trend={trend} />
                 ))}
@@ -831,12 +859,12 @@ function App() {
                   <p>Generate fresh angles and copy them into your workflow.</p>
                 </div>
                 <div className="action-row">
-                  <button className="soft-button" onClick={handleGenerateHooks} type="button">
-                    Generate new
+                  <button className="soft-button" disabled={generatingHooks} onClick={handleGenerateHooks} type="button">
+                    {generatingHooks ? 'Generating...' : 'Generate new'}
                   </button>
                 </div>
               </div>
-              <div className="compact-list">
+              <div className="compact-list compact-list--single">
                 {hookItems.map((hook) => (
                   <article className="compact-card" key={hook.title}>
                     <div className="card-topline">
@@ -885,15 +913,29 @@ function App() {
               </div>
               <div className="inbox-grid inbox-grid--stacked">
                 <InboxSection title={`DM Queue (${filteredDms.length})`}>
-                  {dmPagination.items.map((conversation) => (
-                    <DmCard key={conversation.id} conversation={conversation} />
-                  ))}
+                  {dmPagination.items.length ? (
+                    dmPagination.items.map((conversation) => (
+                      <DmCard key={conversation.id} conversation={conversation} />
+                    ))
+                  ) : (
+                    <EmptyState
+                      title="No live DMs yet"
+                      detail="Once real message webhook events are processed, they will appear here instead of demo rows."
+                    />
+                  )}
                   <Pagination currentPage={dmPagination.page} totalPages={dmPagination.totalPages} onChange={setDmPage} />
                 </InboxSection>
                 <InboxSection title={`Comment Queue (${filteredComments.length})`}>
-                  {commentPagination.items.map((comment) => (
-                    <CommentCard key={comment.id} comment={comment} />
-                  ))}
+                  {commentPagination.items.length ? (
+                    commentPagination.items.map((comment) => (
+                      <CommentCard key={comment.id} comment={comment} />
+                    ))
+                  ) : (
+                    <EmptyState
+                      title="No live comments routed yet"
+                      detail="Synced and classified comments will appear here once comment events or comment sync results are stored."
+                    />
+                  )}
                   <Pagination
                     currentPage={commentPagination.page}
                     totalPages={commentPagination.totalPages}
@@ -949,7 +991,7 @@ function App() {
                   {runningJob === 'competitor-scan' ? 'Queueing...' : 'Run competitor scan'}
                 </button>
               </div>
-                <div className="compact-list">
+                <div className="compact-list compact-list--jobs">
                   {jobPagination.items.map((job) => (
                     <IngestionCard key={job.id} job={job} />
                   ))}
@@ -963,7 +1005,7 @@ function App() {
                   <div className="automation-grid">
                     <article className="ops-card">
                       <h4>Link destinations</h4>
-                      <div className="compact-list">
+                      <div className="compact-list compact-list--single">
                         <LinkCard label="Sales" value={commentAutomation.links.sales} tone="green" />
                         <LinkCard label="Course" value={commentAutomation.links.course} tone="blue" />
                         <LinkCard label="Community" value={commentAutomation.links.community} tone="rose" />
@@ -1001,7 +1043,7 @@ function App() {
 
                     <article className="ops-card">
                       <h4>Intent routes</h4>
-                      <div className="route-list">
+                      <div className="route-list route-list--triple">
                         {commentAutomation.intentRoutes.map((route) => (
                           <article className="route-row" key={route.id}>
                             <div className="card-topline">
@@ -1015,9 +1057,9 @@ function App() {
                       </div>
                     </article>
 
-                    <article className="ops-card">
+                    <article className="ops-card ops-card--wide">
                       <h4>Fan segments</h4>
-                      <div className="route-list">
+                      <div className="route-list route-list--triple">
                         {commentAutomation.fanSegments.map((segment) => (
                           <article className="route-row" key={segment.id}>
                             <div className="card-topline">
@@ -1386,6 +1428,15 @@ function InboxSection({ title, children }: { title: string; children: React.Reac
       </div>
       <div className="compact-list">{children}</div>
     </div>
+  )
+}
+
+function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <article className="empty-state">
+      <strong>{title}</strong>
+      <p>{detail}</p>
+    </article>
   )
 }
 

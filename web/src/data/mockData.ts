@@ -35,11 +35,11 @@ export const dashboardSeed: DashboardData = {
     followerSeries: [42, 54, 49, 65, 71, 84, 76, 92, 111, 120, 128, 144],
     trafficSeries: [8, 6, 11, 9, 13, 12, 14, 18, 15, 19, 17, 22],
     countryBars: [
-      { label: 'India', value: 94 },
-      { label: 'United States', value: 67 },
-      { label: 'UAE', value: 44 },
-      { label: 'UK', value: 31 },
-      { label: 'Canada', value: 22 },
+      { label: 'India', value: 38 },
+      { label: 'United States', value: 24 },
+      { label: 'UAE', value: 16 },
+      { label: 'UK', value: 12 },
+      { label: 'Canada', value: 10 },
     ],
     audienceMix: [
       { label: '25-34', value: 41, color: '#4f46e5' },

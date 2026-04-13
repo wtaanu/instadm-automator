@@ -160,16 +160,23 @@ function generateHooksWithRules(params: {
   brandName: string
   niche: string
   goal: string
+  handle?: string | null
+  recentCaptions?: string[]
   salesLink?: string
   courseLink?: string
   communityLink?: string
 }): GeneratedHook[] {
+  const handleLabel = params.handle ?? `@${params.brandName.toLowerCase().replace(/\s+/g, '')}`
+  const latestCaption =
+    params.recentCaptions?.find((caption) => caption.trim())?.split(/[.!?]/)[0]?.trim() ??
+    `${params.brandName} workflow breakdown`
+
   return [
     {
       type: 'Reel Hook',
-      title: `${params.brandName} does not need more content. It needs a cleaner reply system.`,
-      copy: `Use this to position ${params.niche} as an operational advantage. CTA: Comment SYSTEM and send the sales link in DM.`,
-      caption: `Most teams do not have a content problem. They have a follow-up problem.\n\nIf your comments, DMs, and CTA path are disconnected, growth feels slower than it should.\n\nComment SYSTEM and we will send the workflow.`,
+      title: `${handleLabel}: ${latestCaption}`,
+      copy: `Use this to position ${params.niche} as an operational advantage for ${handleLabel}. CTA: Comment SYSTEM and continue in DM with the sales link.`,
+      caption: `${handleLabel} is growing best when the content shows the workflow clearly and then asks for one direct action.\n\nComment SYSTEM and we will send the next step.`,
     },
     {
       type: 'Carousel CTA',
@@ -272,6 +279,8 @@ export async function generateHooksAndCtas(params: {
   brandName: string
   niche: string
   goal: string
+  handle?: string | null
+  recentCaptions?: string[]
   salesLink?: string
   courseLink?: string
   communityLink?: string
@@ -298,7 +307,7 @@ export async function generateHooksAndCtas(params: {
               {
                 type: 'input_text',
                 text:
-                  'Generate 3 Instagram growth ideas for a services business dashboard. Return a reel hook, a carousel CTA, and a story prompt. Keep titles punchy and the copy practical, short, and conversion-safe. Also provide a usable caption draft for each idea.',
+                  'Generate 3 Instagram growth ideas for a real connected Instagram account. Use the handle, niche, goal, and recent post captions to make the output account-specific. Return a reel hook, a carousel CTA, and a story prompt. Keep titles punchy and the copy practical, short, and conversion-safe. Also provide a usable caption draft for each idea.',
               },
             ],
           },

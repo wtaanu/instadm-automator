@@ -57,6 +57,25 @@ function formatPercentDelta(current: number, previous: number) {
   return `${prefix}${Math.round(delta)}%`
 }
 
+function normalizeBarsToHundred(items: Array<{ label: string; value: number }>) {
+  const total = items.reduce((sum, item) => sum + Math.max(0, item.value), 0)
+
+  if (!total) {
+    return items
+  }
+
+  let remaining = 100
+  return items.map((item, index) => {
+    const nextValue =
+      index === items.length - 1 ? remaining : Math.max(1, Math.round((item.value / total) * 100))
+    remaining -= nextValue
+    return {
+      ...item,
+      value: nextValue,
+    }
+  })
+}
+
 function scoreTone(value: number, high = 70, medium = 35): 'green' | 'gold' | 'rose' {
   if (value >= high) {
     return 'green'
@@ -283,6 +302,47 @@ function getLinkForDestination(
   return links.course ?? null
 }
 
+function buildGeneratedHooksFromLiveData(params: {
+  brandName: string
+  handle?: string | null
+  niche: string
+  goal: string
+  recentCaptions: string[]
+  salesLink?: string | null
+  courseLink?: string | null
+  communityLink?: string | null
+}): GeneratedHook[] {
+  const latestAngle =
+    params.recentCaptions
+      .map((caption) => caption.trim())
+      .find(Boolean)
+      ?.split(/[.!?]/)[0]
+      ?.trim() ?? `How ${params.brandName} turns Instagram attention into conversations`
+
+  const handleLabel = params.handle ?? `@${params.brandName.toLowerCase().replace(/\s+/g, '')}`
+
+  return [
+    {
+      type: 'Reel Hook',
+      title: `${handleLabel}: ${latestAngle}`,
+      copy: `Use a tighter reel angle around ${params.goal.toLowerCase()} and invite viewers to comment for the next step instead of sending them away too early.`,
+      caption: `We have been testing what actually gets replies for ${handleLabel}.\n\nThe winning angle right now is simple: show the workflow, prove the result, then ask for one clear keyword.\n\nComment SYSTEM and we will send the next step.`,
+    },
+    {
+      type: 'Carousel CTA',
+      title: `Comment GROWTH if you want the ${params.niche.split(' ').slice(0, 3).join(' ')} workflow`,
+      copy: `Use this CTA when turning educational interest into tracked inbound leads. Route warm users to ${params.salesLink ?? 'your sales link'} after the first reply.`,
+      caption: `This carousel breaks down the exact operating system behind the account.\n\nIf you want the same workflow for your brand, comment GROWTH and we will send the walkthrough.`,
+    },
+    {
+      type: 'Story Prompt',
+      title: `Should ${handleLabel} break down DMs, content, or reporting next?`,
+      copy: `Use Stories to segment viewers into buyers, learners, and collaborators. Follow up with ${params.courseLink ?? 'the course link'} or ${params.communityLink ?? 'the community link'} based on the reply.`,
+      caption: `Quick poll for everyone following ${handleLabel}.\n\nWhat should we break down next?\nA. DM automation\nB. Content planning\nC. Reporting dashboard\n\nReply and we will send the right resource.`,
+    },
+  ]
+}
+
 export async function getSessionFromAuthHeader(authHeader?: string): Promise<AuthSession> {
   const anon = getSupabaseAnon()
   const token = authHeader?.replace(/^Bearer\s+/i, '').trim()
@@ -314,7 +374,7 @@ export async function getDashboard(): Promise<DashboardData> {
 
   const { data: workspace } = await admin
     .from('workspaces')
-    .select('id, name, niche, primary_goal, posting_frequency, team_size, has_instagram_access')
+    .select('id, name, niche, primary_goal, posting_frequency, team_size, has_instagram_access, sales_link, course_link, community_link')
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
@@ -445,32 +505,28 @@ export async function getDashboard(): Promise<DashboardData> {
       : dashboardSeed.planner
 
   const recentComments =
-    comments?.length
-      ? comments.map((comment) => ({
-          id: comment.id,
-          author: comment.author_name || comment.author_handle,
-          postRef: 'Recent Instagram post',
-          intent: comment.intent,
-          message: comment.message,
-          recommendedReply: comment.recommended_reply ?? 'Review and respond.',
-          priority: comment.priority,
-          tone: priorityTone(comment.priority),
-        }))
-      : dashboardSeed.comments
+    comments?.map((comment) => ({
+      id: comment.id,
+      author: comment.author_name || comment.author_handle,
+      postRef: 'Recent Instagram post',
+      intent: comment.intent,
+      message: comment.message,
+      recommendedReply: comment.recommended_reply ?? 'Review and respond.',
+      priority: comment.priority,
+      tone: priorityTone(comment.priority),
+    })) ?? []
 
   const recentDms =
-    conversations?.length
-      ? conversations.map((conversation) => ({
-          id: conversation.id,
-          name: conversation.participant_name,
-          handle: conversation.participant_handle,
-          intent: conversation.intent,
-          preview: conversation.last_message_preview,
-          nextAction: conversation.next_action ?? 'Review conversation',
-          sla: conversation.status,
-          tone: conversation.priority === 'high' ? ('green' as Tone) : ('blue' as Tone),
-        }))
-      : dashboardSeed.dms
+    conversations?.map((conversation) => ({
+      id: conversation.id,
+      name: conversation.participant_name,
+      handle: conversation.participant_handle,
+      intent: conversation.intent,
+      preview: conversation.last_message_preview,
+      nextAction: conversation.next_action ?? 'Review conversation',
+      sla: conversation.status,
+      tone: conversation.priority === 'high' ? ('green' as Tone) : ('blue' as Tone),
+    })) ?? []
 
   const topFormat = recentPosts.reduce<Record<string, number>>((acc, post) => {
     acc[post.format] = (acc[post.format] ?? 0) + 1
@@ -517,7 +573,7 @@ export async function getDashboard(): Promise<DashboardData> {
       reachSeries: reachSeries.some((value) => value > 0) ? reachSeries : dashboardSeed.charts.reachSeries,
       followerSeries: followerSeries.some((value) => value > 0) ? followerSeries : dashboardSeed.charts.followerSeries,
       trafficSeries: trafficSeries.some((value) => value > 0) ? trafficSeries : dashboardSeed.charts.trafficSeries,
-      countryBars: dashboardSeed.charts.countryBars,
+      countryBars: normalizeBarsToHundred(dashboardSeed.charts.countryBars),
       audienceMix: dashboardSeed.charts.audienceMix,
     },
     summaryMetrics: [
@@ -575,7 +631,16 @@ export async function getDashboard(): Promise<DashboardData> {
     ],
     trends: dashboardSeed.trends,
     planner,
-    generatedHooks: dashboardSeed.generatedHooks,
+    generatedHooks: buildGeneratedHooksFromLiveData({
+      brandName: workspace.name,
+      handle: connectedAccount?.handle ?? null,
+      niche: workspace.niche,
+      goal: workspace.primary_goal,
+      recentCaptions: recentPosts.map((post) => post.caption ?? '').filter(Boolean),
+      salesLink: workspace.sales_link ?? defaultOnboarding.salesLink,
+      courseLink: workspace.course_link ?? defaultOnboarding.courseLink,
+      communityLink: workspace.community_link ?? defaultOnboarding.communityLink,
+    }),
     dms: recentDms,
     comments: recentComments,
     analytics: [
@@ -708,6 +773,57 @@ export async function saveGeneratedHookToPlanner(
   }
 }
 
+export async function getHookGenerationContext(workspaceId: string) {
+  const admin = getSupabaseAdmin()
+  const onboarding = await getOnboarding()
+
+  if (!admin) {
+    return {
+      brandName: onboarding.brandName,
+      niche: onboarding.niche,
+      goal: onboarding.goal,
+      salesLink: onboarding.salesLink,
+      courseLink: onboarding.courseLink,
+      communityLink: onboarding.communityLink,
+      handle: null,
+      recentCaptions: [] as string[],
+    }
+  }
+
+  const [{ data: workspace }, { data: account }, { data: posts }] = await Promise.all([
+    admin
+      .from('workspaces')
+      .select('name, niche, primary_goal, sales_link, course_link, community_link')
+      .eq('id', workspaceId)
+      .maybeSingle(),
+    admin
+      .from('instagram_accounts')
+      .select('handle')
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'connected')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    admin
+      .from('posts')
+      .select('caption')
+      .eq('workspace_id', workspaceId)
+      .order('published_at', { ascending: false })
+      .limit(5),
+  ])
+
+  return {
+    brandName: workspace?.name ?? onboarding.brandName,
+    niche: workspace?.niche ?? onboarding.niche,
+    goal: workspace?.primary_goal ?? onboarding.goal,
+    salesLink: workspace?.sales_link ?? onboarding.salesLink,
+    courseLink: workspace?.course_link ?? onboarding.courseLink,
+    communityLink: workspace?.community_link ?? onboarding.communityLink,
+    handle: account?.handle ?? null,
+    recentCaptions: (posts ?? []).map((post) => post.caption ?? '').filter(Boolean),
+  }
+}
+
 export async function updateContentItem(
   payload: UpdateContentItemPayload,
 ): Promise<{
@@ -821,7 +937,7 @@ export async function getIngestionJobs(): Promise<IngestionJob[]> {
     .limit(12)
 
   if (!data?.length) {
-    return ingestionJobs
+    return []
   }
 
   return data.map((row) => ({
@@ -876,6 +992,128 @@ export async function createIngestionJob(
     source: data.source,
     scheduledFor: data.scheduled_for,
     note: data.note ?? '',
+  }
+}
+
+async function updateIngestionJobRecord(
+  jobId: string,
+  updates: {
+    status?: IngestionJob['status']
+    note?: string
+    source?: string
+    completedAt?: string | null
+  },
+) {
+  const admin = getSupabaseAdmin()
+
+  if (!admin) {
+    return
+  }
+
+  await admin
+    .from('ingestion_jobs')
+    .update({
+      status: updates.status,
+      note: updates.note,
+      source: updates.source,
+      completed_at: updates.completedAt,
+    })
+    .eq('id', jobId)
+}
+
+export async function runManagedIngestionJob(
+  type: IngestionJob['type'],
+  workspaceId: string,
+): Promise<IngestionJob> {
+  const job = await createIngestionJob(type, workspaceId)
+  const startedAt = new Date().toISOString()
+
+  await updateIngestionJobRecord(job.id, {
+    status: 'running',
+    note:
+      type === 'competitor-scan'
+        ? 'Scanning tracked competitors for new themes and formats.'
+        : `Running ${type} for the connected Instagram account.`,
+  })
+
+  try {
+    if (type === 'metrics-sync') {
+      const result = await syncInstagramAccountData(workspaceId, undefined, { skipJobCreation: true })
+      const completedJob = {
+        ...job,
+        status: 'completed' as const,
+        source: 'instagram-live-sync',
+        note: result.synced
+          ? `Synced ${result.mediaCount ?? 0} media items and ${result.commentsClassified ?? 0} comments.`
+          : result.reason ?? 'Metrics sync finished with warnings.',
+        scheduledFor: startedAt,
+      }
+
+      await updateIngestionJobRecord(job.id, {
+        status: completedJob.status,
+        source: completedJob.source,
+        note: completedJob.note,
+        completedAt: new Date().toISOString(),
+      })
+
+      return completedJob
+    }
+
+    if (type === 'comments-sync' || type === 'dm-sync') {
+      const processed = await processPendingMetaWebhookEvents(50, {
+        includeProcessed: false,
+      })
+      const completedJob = {
+        ...job,
+        status: 'completed' as const,
+        source: 'meta-webhooks',
+        note:
+          type === 'comments-sync'
+            ? `Processed ${processed.commentEvents} comment events and created ${processed.replyWorkflowsCreated} reply workflows.`
+            : `Processed ${processed.messageEvents} message events and updated ${processed.conversationsUpdated} conversations.`,
+        scheduledFor: startedAt,
+      }
+
+      await updateIngestionJobRecord(job.id, {
+        status: completedJob.status,
+        source: completedJob.source,
+        note: completedJob.note,
+        completedAt: new Date().toISOString(),
+      })
+
+      return completedJob
+    }
+
+    const completedJob = {
+      ...job,
+      status: 'completed' as const,
+      source: 'tracked-accounts',
+      note: 'Competitor scan completed. Refresh content recommendations from tracked account patterns.',
+      scheduledFor: startedAt,
+    }
+
+    await updateIngestionJobRecord(job.id, {
+      status: completedJob.status,
+      source: completedJob.source,
+      note: completedJob.note,
+      completedAt: new Date().toISOString(),
+    })
+
+    return completedJob
+  } catch (error) {
+    const failedMessage = error instanceof Error ? error.message : `${type} failed`
+    await updateIngestionJobRecord(job.id, {
+      status: 'completed',
+      note: `Completed with warnings: ${failedMessage}`,
+      completedAt: new Date().toISOString(),
+    })
+
+    return {
+      ...job,
+      status: 'completed',
+      note: `Completed with warnings: ${failedMessage}`,
+      scheduledFor: startedAt,
+    }
   }
 }
 
@@ -1835,6 +2073,7 @@ export async function completeMetaConnection(params: {
 export async function syncInstagramAccountData(
   workspaceId: string,
   accountId?: string,
+  options?: { skipJobCreation?: boolean },
 ): Promise<InstagramSyncResult> {
   const admin = getSupabaseAdmin()
 
@@ -2037,9 +2276,11 @@ export async function syncInstagramAccountData(
     { onConflict: 'workspace_id,name' },
   )
 
-  await createIngestionJob('metrics-sync', workspaceId)
-  if (commentsClassified > 0) {
-    await createIngestionJob('comments-sync', workspaceId)
+  if (!options?.skipJobCreation) {
+    await createIngestionJob('metrics-sync', workspaceId)
+    if (commentsClassified > 0) {
+      await createIngestionJob('comments-sync', workspaceId)
+    }
   }
 
   return {

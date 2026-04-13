@@ -500,6 +500,14 @@
   gap: 12px;
 }
 
+.compact-list--single {
+  grid-template-columns: 1fr;
+}
+
+.compact-list--jobs {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
 .chart-wrap--tight {
   margin-top: 14px;
 }
@@ -847,6 +855,7 @@
 
 .inbox-grid--stacked {
   grid-template-columns: 1fr;
+  gap: 18px;
 }
 
 .settings-grid {
@@ -878,8 +887,12 @@
 }
 
 .automation-grid {
-  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
+}
+
+.ops-card--wide {
+  grid-column: 1 / -1;
 }
 
 .inbox-column {
@@ -903,11 +916,12 @@
 
 .ticket-row {
   display: grid;
-  grid-template-columns: 110px minmax(260px, 1fr) minmax(220px, 0.9fr);
-  gap: 20px;
+  grid-template-columns: 128px minmax(0, 1.2fr) minmax(220px, 0.8fr);
+  gap: 16px;
   padding: 14px 0;
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   align-items: start;
+  min-width: 0;
 }
 
 .ticket-row:last-child {
@@ -954,6 +968,24 @@
   text-align: left;
 }
 
+.empty-state {
+  display: grid;
+  gap: 6px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.empty-state strong {
+  font-size: 0.88rem;
+  color: var(--ink-strong);
+}
+
+.empty-state p {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .inline-button {
   padding: 6px 10px;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -997,6 +1029,10 @@
   gap: 10px;
 }
 
+.route-list--triple {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .chart-panel > .compact-list,
 .chart-panel > .route-list,
 .chart-panel > .data-table,
@@ -1014,6 +1050,11 @@
 .route-row strong {
   font-size: 0.95rem;
   text-transform: capitalize;
+}
+
+.route-row p,
+.route-row small {
+  overflow-wrap: anywhere;
 }
 
 .searchbox {
