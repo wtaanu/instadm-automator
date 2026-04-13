@@ -464,12 +464,26 @@ app.post('/api/instagram/sync', async (req, res) => {
   }
 })
 
-app.post('/api/meta/webhook/process', async (req, res) => {
-  const schema = z.object({
-    limit: z.coerce.number().int().min(1).max(200).optional(),
-  })
+const webhookProcessSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+})
 
-  const parsed = schema.safeParse(req.body ?? {})
+app.get('/api/meta/webhook/process', async (req, res) => {
+  const parsed = webhookProcessSchema.safeParse(req.query)
+
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Invalid webhook processing query',
+      errors: parsed.error.flatten(),
+    })
+    return
+  }
+
+  res.json(await processPendingMetaWebhookEvents(parsed.data.limit))
+})
+
+app.post('/api/meta/webhook/process', async (req, res) => {
+  const parsed = webhookProcessSchema.safeParse(req.body ?? {})
 
   if (!parsed.success) {
     res.status(400).json({
