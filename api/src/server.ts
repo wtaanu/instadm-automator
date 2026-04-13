@@ -30,6 +30,10 @@ const app = express()
 const port = env.port
 
 function verifyMetaSignature(rawBody: Buffer, signatureHeader?: string) {
+  if (env.metaAllowUnsignedWebhookTests && !signatureHeader) {
+    return true
+  }
+
   if (!signatureHeader || !env.metaAppSecret) {
     return false
   }
@@ -43,6 +47,10 @@ function verifyMetaSignature(rawBody: Buffer, signatureHeader?: string) {
     .createHmac('sha256', env.metaAppSecret)
     .update(rawBody)
     .digest('hex')
+
+  if (receivedSignature.length !== expectedSignature.length) {
+    return false
+  }
 
   return crypto.timingSafeEqual(Buffer.from(receivedSignature), Buffer.from(expectedSignature))
 }
@@ -119,6 +127,10 @@ app.get('/api/meta/webhook', (req, res) => {
   const verifyToken = String(req.query['hub.verify_token'] ?? '')
   const challenge = String(req.query['hub.challenge'] ?? '')
 
+  console.log(
+    `[meta-webhook] verify mode=${mode} tokenMatch=${verifyToken === env.metaWebhookVerifyToken}`,
+  )
+
   if (mode === 'subscribe' && verifyToken === env.metaWebhookVerifyToken) {
     res.status(200).send(challenge)
     return
@@ -131,7 +143,12 @@ app.post('/api/meta/webhook', express.raw({ type: 'application/json' }), async (
   const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from([])
   const signatureHeader = req.header('x-hub-signature-256') ?? undefined
 
+  console.log(
+    `[meta-webhook] received bytes=${rawBody.length} signaturePresent=${Boolean(signatureHeader)}`,
+  )
+
   if (!verifyMetaSignature(rawBody, signatureHeader)) {
+    console.warn('[meta-webhook] rejected invalid signature')
     res.status(401).json({ message: 'Invalid Meta webhook signature' })
     return
   }
@@ -140,6 +157,10 @@ app.post('/api/meta/webhook', express.raw({ type: 'application/json' }), async (
     object?: string
     entry?: Array<Record<string, unknown>>
   }
+
+  console.log(
+    `[meta-webhook] accepted object=${payload.object ?? 'unknown'} entries=${payload.entry?.length ?? 0}`,
+  )
 
   const queuedJobs = new Set<IngestionJob['type']>()
 

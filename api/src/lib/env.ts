@@ -16,6 +16,7 @@ export const env = {
   metaAppId: process.env.META_APP_ID ?? '',
   metaAppSecret: process.env.META_APP_SECRET ?? '',
   metaWebhookVerifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN ?? 'replace-with-meta-webhook-verify-token',
+  metaAllowUnsignedWebhookTests: process.env.META_ALLOW_UNSIGNED_WEBHOOK_TESTS === 'true',
   metaRedirectUri: process.env.META_REDIRECT_URI ?? 'http://localhost:4000/api/instagram/callback',
   metaApiVersion: process.env.META_API_VERSION ?? 'v23.0',
   metaScopes:
