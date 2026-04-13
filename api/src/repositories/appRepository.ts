@@ -209,6 +209,43 @@ function getObjectValue(value: unknown): Record<string, unknown> | null {
     : null
 }
 
+function collectCandidateIds(value: unknown): string[] {
+  const seen = new Set<string>()
+  const queue: unknown[] = [value]
+
+  while (queue.length) {
+    const current = queue.shift()
+    if (!current) {
+      continue
+    }
+
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        queue.push(item)
+      }
+      continue
+    }
+
+    if (typeof current !== 'object') {
+      continue
+    }
+
+    const objectValue = current as Record<string, unknown>
+    for (const [key, nested] of Object.entries(objectValue)) {
+      if (key === 'id') {
+        const id = getStringValue(nested)
+        if (id) {
+          seen.add(id)
+        }
+      }
+
+      queue.push(nested)
+    }
+  }
+
+  return Array.from(seen)
+}
+
 function buildParticipantHandle(participantId?: string | null) {
   const tail = participantId?.slice(-6) ?? 'unknown'
   return `@ig-user-${tail}`
@@ -886,6 +923,29 @@ async function getWorkspaceAutomationContext(workspaceId: string) {
   }
 }
 
+async function resolveAccountFromCandidates(candidateIds: string[]) {
+  const admin = getSupabaseAdmin()
+
+  if (!admin || !candidateIds.length) {
+    return null
+  }
+
+  for (const candidateId of candidateIds) {
+    const { data } = await admin
+      .from('instagram_accounts')
+      .select('id, workspace_id, instagram_user_id, facebook_page_id')
+      .or(`instagram_user_id.eq.${candidateId},facebook_page_id.eq.${candidateId}`)
+      .limit(1)
+      .maybeSingle()
+
+    if (data?.id) {
+      return data
+    }
+  }
+
+  return null
+}
+
 async function createReplyWorkflowRecord(params: {
   workspaceId: string
   instagramAccountId?: string | null
@@ -1278,7 +1338,31 @@ export async function processPendingMetaWebhookEvents(limit = 25): Promise<Webho
 
   for (const event of events ?? []) {
     try {
-      if (!event.workspace_id) {
+      let resolvedWorkspaceId = event.workspace_id
+      let resolvedInstagramAccountId = event.instagram_account_id
+
+      if (!resolvedWorkspaceId) {
+        const candidateIds = collectCandidateIds(event.payload_json)
+        if (event.entry_id) {
+          candidateIds.unshift(event.entry_id)
+        }
+
+        const resolvedAccount = await resolveAccountFromCandidates(candidateIds)
+        if (resolvedAccount?.workspace_id) {
+          resolvedWorkspaceId = resolvedAccount.workspace_id
+          resolvedInstagramAccountId = resolvedAccount.id
+
+          await admin
+            .from('meta_webhook_events')
+            .update({
+              workspace_id: resolvedWorkspaceId,
+              instagram_account_id: resolvedInstagramAccountId,
+            })
+            .eq('id', event.id)
+        }
+      }
+
+      if (!resolvedWorkspaceId) {
         result.skipped += 1
         await admin
           .from('meta_webhook_events')
@@ -1297,8 +1381,8 @@ export async function processPendingMetaWebhookEvents(limit = 25): Promise<Webho
       if (event.event_family === 'messages') {
         const processed = await processMessageWebhookEvent({
           id: event.id,
-          workspace_id: event.workspace_id,
-          instagram_account_id: event.instagram_account_id,
+          workspace_id: resolvedWorkspaceId,
+          instagram_account_id: resolvedInstagramAccountId,
           entry_id: event.entry_id,
           event_type: event.event_type,
           payload_json: payload,
@@ -1312,8 +1396,8 @@ export async function processPendingMetaWebhookEvents(limit = 25): Promise<Webho
       } else if (isCommentEvent) {
         const processed = await processCommentWebhookEvent({
           id: event.id,
-          workspace_id: event.workspace_id,
-          instagram_account_id: event.instagram_account_id,
+          workspace_id: resolvedWorkspaceId,
+          instagram_account_id: resolvedInstagramAccountId,
           event_type: event.event_type,
           payload_json: payload,
           received_at: event.received_at,
