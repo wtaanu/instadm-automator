@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Instagram Automation Client Setup Guide</title>
+    <style>
+      :root {
+        --ink: #15233b;
+        --muted: #5e6b82;
+        --line: #dbe4ef;
+        --panel: #f7fafd;
+        --accent: #173f8a;
+        --accent-soft: #e8f0ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: var(--ink);
+        background: #eef3f9;
+      }
+
+      .page {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 16mm 14mm 18mm;
+        background: #fff;
+      }
+
+      .hero {
+        padding: 14mm 12mm;
+        border: 1px solid var(--line);
+        background: linear-gradient(135deg, #f9fbff 0%, #edf4ff 100%);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #6d7b93;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 34px;
+        line-height: 1.05;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 640px;
+        font-size: 16px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      .section {
+        margin-top: 18px;
+        padding: 16px 0 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 8px;
+        font-size: 21px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+
+      p,
+      li {
+        font-size: 14px;
+        line-height: 1.65;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .panel {
+        padding: 14px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .panel ul,
+      .section ul {
+        margin: 8px 0 0 18px;
+        padding: 0;
+      }
+
+      .steps {
+        display: grid;
+        gap: 12px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 52px 1fr;
+        gap: 12px;
+        align-items: start;
+        padding: 14px;
+        border: 1px solid var(--line);
+      }
+
+      .step-number {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .workflow {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .workflow .panel {
+        min-height: 100%;
+      }
+
+      .note {
+        margin-top: 12px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        background: var(--accent-soft);
+      }
+
+      .footer {
+        margin-top: 18px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: #72809a;
+      }
+
+      @media print {
+        body {
+          background: #fff;
+        }
+
+        .page {
+          margin: 0;
+          width: auto;
+          min-height: auto;
+          padding: 14mm 12mm 16mm;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Client Handoff Guide</p>
+        <h1>Instagram Automation Setup and Usage Guide</h1>
+        <p>
+          This document explains what the system does, what your team needs before setup,
+          and how you will use the platform once your Instagram account is connected.
+        </p>
+      </section>
+
+      <section class="section">
+        <h2>What This System Does</h2>
+        <div class="grid">
+          <article class="panel">
+            <h3>Growth Operations</h3>
+            <ul>
+              <li>Tracks Instagram performance in one dashboard</li>
+              <li>Organizes content planning and publishing activity</li>
+              <li>Shows comments, DMs, and key follow-up actions</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>Engagement Automation</h3>
+            <ul>
+              <li>Listens for comments and incoming intent signals</li>
+              <li>Routes users toward the correct DM or destination link</li>
+              <li>Measures message sends, opens, clicks, and response quality</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Pre-Setup Requirements</h2>
+        <div class="grid">
+          <article class="panel">
+            <h3>Access Required</h3>
+            <ul>
+              <li>Professional Instagram account</li>
+              <li>Business or Creator profile enabled</li>
+              <li>Instagram connected to a Facebook Page</li>
+              <li>Meta / Facebook admin access for approval</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>Business Inputs Required</h3>
+            <ul>
+              <li>Brand name and niche</li>
+              <li>Primary goal and posting frequency</li>
+              <li>Sales link, course link, and community link</li>
+              <li>FAQ responses and preferred communication tone</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Setup Flow</h2>
+        <div class="steps">
+          <article class="step">
+            <div class="step-number">1</div>
+            <div>
+              <h3>Workspace Setup</h3>
+              <p>We add your brand details, niche, primary goal, posting frequency, team size, and destination links.</p>
+            </div>
+          </article>
+          <article class="step">
+            <div class="step-number">2</div>
+            <div>
+              <h3>Instagram Connection</h3>
+              <p>We connect the account through Meta so the system can store the account reference and begin syncing media and available insight data.</p>
+            </div>
+          </article>
+          <article class="step">
+            <div class="step-number">3</div>
+            <div>
+              <h3>Intent Routing Setup</h3>
+              <p>We define what should happen when someone leaves a question, inquiry, or collaboration comment.</p>
+            </div>
+          </article>
+          <article class="step">
+            <div class="step-number">4</div>
+            <div>
+              <h3>First Sync and Review</h3>
+              <p>We sync the account, verify available data, and review what is automated versus what still needs manual approval.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>How Your Team Uses the Dashboard</h2>
+        <div class="workflow">
+          <article class="panel">
+            <h3>Overview</h3>
+            <p>Review account health, growth direction, and top priorities for the week.</p>
+          </article>
+          <article class="panel">
+            <h3>Content</h3>
+            <p>Review the calendar, see trend signals, and generate hooks and CTAs for upcoming posts.</p>
+          </article>
+          <article class="panel">
+            <h3>Inbox</h3>
+            <p>Manage DMs and comment queues, reduce delays, and handle high-priority conversations first.</p>
+          </article>
+          <article class="panel">
+            <h3>Analytics</h3>
+            <p>Track message performance, routing outcomes, sync status, and workflow progress.</p>
+          </article>
+          <article class="panel">
+            <h3>Settings</h3>
+            <p>Update links, workspace details, Instagram connection, and auto-DM routing logic.</p>
+          </article>
+          <article class="panel">
+            <h3>Review Rhythm</h3>
+            <p>Check inbox daily, review analytics weekly, and refine content and routing rules monthly.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>What Is Automated and What Still Needs Review</h2>
+        <div class="grid">
+          <article class="panel">
+            <h3>Can Be Automated</h3>
+            <ul>
+              <li>Comment listening</li>
+              <li>Intent detection</li>
+              <li>Reply routing logic</li>
+              <li>Hook and CTA generation</li>
+              <li>Sync jobs and reporting workflows</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>Should Stay Human-Reviewed</h3>
+            <ul>
+              <li>Pricing and sales conversations</li>
+              <li>Partnership or white-label requests</li>
+              <li>Custom or sensitive responses</li>
+              <li>Major changes to brand tone or offers</li>
+            </ul>
+          </article>
+        </div>
+        <div class="note">
+          The platform works best as a growth operations system, not as a spam automation tool.
+          Strong results come from quick replies, clean routing logic, updated links, and regular team review.
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Final Client Checklist</h2>
+        <ul>
+          <li>Instagram account is professional and connected to a Facebook Page</li>
+          <li>Meta admin is available for connection approval</li>
+          <li>Sales, course, and community links are final</li>
+          <li>Team knows who reviews high-intent messages</li>
+          <li>Brand tone and FAQ responses are confirmed</li>
+        </ul>
+      </section>
+
+      <p class="footer">Instagram Automation Client Setup Guide</p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,62 @@
+:root {
+  font-family:
+    "Aptos",
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #162033;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.1), transparent 20%),
+    radial-gradient(circle at right center, rgba(15, 118, 110, 0.08), transparent 18%),
+    linear-gradient(180deg, #f5f7fb 0%, #eef2f8 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --ink-strong: #111c30;
+  --navy-strong: #111c30;
+  --muted: #677489;
+  --muted-soft: #8b98ac;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: transparent;
+  font-size: 15px;
+}
+
+button,
+input {
+  font: inherit;
+  border: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+.kicker {
+  display: inline-block;
+  color: #7b879a;
+}
