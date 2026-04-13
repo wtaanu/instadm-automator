@@ -466,6 +466,7 @@ app.post('/api/instagram/sync', async (req, res) => {
 
 const webhookProcessSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
+  includeProcessed: z.coerce.boolean().optional(),
 })
 
 app.get('/api/meta/webhook/process', async (req, res) => {
@@ -493,7 +494,53 @@ app.post('/api/meta/webhook/process', async (req, res) => {
     return
   }
 
-  res.json(await processPendingMetaWebhookEvents(parsed.data.limit))
+  res.json(
+    await processPendingMetaWebhookEvents(parsed.data.limit, {
+      includeProcessed: parsed.data.includeProcessed,
+    }),
+  )
+})
+
+app.get('/api/meta/webhook/reprocess', async (req, res) => {
+  const parsed = webhookProcessSchema.safeParse({
+    ...req.query,
+    includeProcessed: true,
+  })
+
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Invalid webhook reprocess query',
+      errors: parsed.error.flatten(),
+    })
+    return
+  }
+
+  res.json(
+    await processPendingMetaWebhookEvents(parsed.data.limit, {
+      includeProcessed: true,
+    }),
+  )
+})
+
+app.post('/api/meta/webhook/reprocess', async (req, res) => {
+  const parsed = webhookProcessSchema.safeParse({
+    ...(req.body ?? {}),
+    includeProcessed: true,
+  })
+
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Invalid webhook reprocess payload',
+      errors: parsed.error.flatten(),
+    })
+    return
+  }
+
+  res.json(
+    await processPendingMetaWebhookEvents(parsed.data.limit, {
+      includeProcessed: true,
+    }),
+  )
 })
 
 app.post('/api/ingestion-jobs/run', async (req, res) => {

@@ -1300,7 +1300,10 @@ async function processCommentWebhookEvent(event: {
   }
 }
 
-export async function processPendingMetaWebhookEvents(limit = 25): Promise<WebhookProcessingResult> {
+export async function processPendingMetaWebhookEvents(
+  limit = 25,
+  options?: { includeProcessed?: boolean },
+): Promise<WebhookProcessingResult> {
   const admin = getSupabaseAdmin()
 
   if (!admin) {
@@ -1316,14 +1319,19 @@ export async function processPendingMetaWebhookEvents(limit = 25): Promise<Webho
     }
   }
 
-  const { data: events } = await admin
+  let eventsQuery = admin
     .from('meta_webhook_events')
     .select(
-      'id, workspace_id, instagram_account_id, object, entry_id, event_family, event_type, payload_json, received_at',
+      'id, workspace_id, instagram_account_id, object, entry_id, event_family, event_type, payload_json, received_at, processed_at',
     )
-    .is('processed_at', null)
     .order('received_at', { ascending: true })
     .limit(limit)
+
+  if (!options?.includeProcessed) {
+    eventsQuery = eventsQuery.is('processed_at', null)
+  }
+
+  const { data: events } = await eventsQuery
 
   const result: WebhookProcessingResult = {
     processed: 0,
