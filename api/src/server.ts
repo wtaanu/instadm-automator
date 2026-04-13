@@ -17,6 +17,7 @@ import {
   getSessionFromAuthHeader,
   classifyCommentPreview,
   completeMetaConnection,
+  processPendingMetaWebhookEvents,
   recordMetaWebhookEvent,
   saveInstagramAccount,
   saveCommentAutomation,
@@ -171,12 +172,21 @@ app.post('/api/meta/webhook', express.raw({ type: 'application/json' }), async (
 
     for (const change of changes) {
       const field = typeof change.field === 'string' ? change.field : 'unknown'
-      const eventFamily = field.toLowerCase().includes('comment') ? 'comments' : 'unknown'
+      const changeValue =
+        change && typeof change === 'object' && !Array.isArray(change)
+          ? (change as { value?: Record<string, unknown> }).value
+          : undefined
+      const feedItem =
+        changeValue && typeof changeValue.item === 'string' ? changeValue.item.toLowerCase() : ''
+      const eventFamily =
+        field.toLowerCase().includes('comment') || (field === 'feed' && feedItem === 'comment')
+          ? 'comments'
+          : 'unknown'
       const result = await recordMetaWebhookEvent({
         object: payload.object ?? 'unknown',
         entryId,
         eventFamily,
-        eventType: field,
+        eventType: field === 'feed' && feedItem ? `${field}:${feedItem}` : field,
         payload: change,
       })
 
@@ -452,6 +462,24 @@ app.post('/api/instagram/sync', async (req, res) => {
       reason: error instanceof Error ? error.message : 'Instagram sync failed',
     })
   }
+})
+
+app.post('/api/meta/webhook/process', async (req, res) => {
+  const schema = z.object({
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+  })
+
+  const parsed = schema.safeParse(req.body ?? {})
+
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Invalid webhook processing payload',
+      errors: parsed.error.flatten(),
+    })
+    return
+  }
+
+  res.json(await processPendingMetaWebhookEvents(parsed.data.limit))
 })
 
 app.post('/api/ingestion-jobs/run', async (req, res) => {

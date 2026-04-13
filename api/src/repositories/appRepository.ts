@@ -35,6 +35,7 @@ import type {
   SaveGeneratedHookPayload,
   Tone,
   UpdateContentItemPayload,
+  WebhookProcessingResult,
 } from '../types.js'
 
 function formatCompactNumber(value: number) {
@@ -196,6 +197,53 @@ function buildCommentRecord(params: {
     classified_at: new Date().toISOString(),
     classification_source: params.classification.source,
   }
+}
+
+function getStringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function getObjectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function buildParticipantHandle(participantId?: string | null) {
+  const tail = participantId?.slice(-6) ?? 'unknown'
+  return `@ig-user-${tail}`
+}
+
+function buildParticipantName(participantId?: string | null) {
+  const tail = participantId?.slice(-4) ?? 'user'
+  return `Instagram user ${tail}`
+}
+
+function buildNextActionFromClassification(classification: CommentIntentClassification) {
+  if (classification.intent === 'inquiry') {
+    return 'Review pricing response and approve sales link DM'
+  }
+
+  if (classification.intent === 'collaboration') {
+    return 'Review partnership response and route to founder inbox'
+  }
+
+  return 'Review educational reply and approve resource DM'
+}
+
+function getLinkForDestination(
+  destination: CommentIntentClassification['destination'],
+  links: { sales?: string | null; course?: string | null; community?: string | null },
+) {
+  if (destination === 'sales') {
+    return links.sales ?? null
+  }
+
+  if (destination === 'community') {
+    return links.community ?? null
+  }
+
+  return links.course ?? null
 }
 
 export async function getSessionFromAuthHeader(authHeader?: string): Promise<AuthSession> {
@@ -792,6 +840,506 @@ export async function createIngestionJob(
     scheduledFor: data.scheduled_for,
     note: data.note ?? '',
   }
+}
+
+async function getWorkspaceAutomationContext(workspaceId: string) {
+  const admin = getSupabaseAdmin()
+
+  if (!admin) {
+    return {
+      links: {
+        sales: defaultOnboarding.salesLink,
+        course: defaultOnboarding.courseLink,
+        community: defaultOnboarding.communityLink,
+      },
+      routeMap: new Map<string, { destination: 'sales' | 'course' | 'community'; responseTemplate: string }>(),
+    }
+  }
+
+  const [{ data: workspace }, { data: routes }] = await Promise.all([
+    admin
+      .from('workspaces')
+      .select('sales_link, course_link, community_link')
+      .eq('id', workspaceId)
+      .maybeSingle(),
+    admin
+      .from('comment_intent_routes')
+      .select('intent, destination, response_template')
+      .eq('workspace_id', workspaceId),
+  ])
+
+  return {
+    links: {
+      sales: workspace?.sales_link ?? defaultOnboarding.salesLink,
+      course: workspace?.course_link ?? defaultOnboarding.courseLink,
+      community: workspace?.community_link ?? defaultOnboarding.communityLink,
+    },
+    routeMap: new Map(
+      (routes ?? []).map((route) => [
+        route.intent,
+        {
+          destination: route.destination as 'sales' | 'course' | 'community',
+          responseTemplate: route.response_template,
+        },
+      ]),
+    ),
+  }
+}
+
+async function createReplyWorkflowRecord(params: {
+  workspaceId: string
+  instagramAccountId?: string | null
+  sourceEventId: string
+  sourceType: 'comment' | 'dm'
+  sourceRecordId?: string | null
+  channel: 'dm' | 'comment'
+  classification: CommentIntentClassification
+  routeTemplate?: string | null
+  links: {
+    sales?: string | null
+    course?: string | null
+    community?: string | null
+  }
+  triggerReason: string
+}) {
+  const admin = getSupabaseAdmin()
+
+  if (!admin) {
+    return false
+  }
+
+  const { data: existing } = await admin
+    .from('reply_workflows')
+    .select('id')
+    .eq('source_event_id', params.sourceEventId)
+    .eq('channel', params.channel)
+    .limit(1)
+    .maybeSingle()
+
+  if (existing?.id) {
+    return false
+  }
+
+  const linkUrl = getLinkForDestination(params.classification.destination, params.links)
+  await admin.from('reply_workflows').insert({
+    workspace_id: params.workspaceId,
+    instagram_account_id: params.instagramAccountId ?? null,
+    source_event_id: params.sourceEventId,
+    source_type: params.sourceType,
+    source_record_id: params.sourceRecordId ?? null,
+    channel: params.channel,
+    intent: params.classification.intent,
+    priority: params.classification.priority,
+    destination: params.classification.destination,
+    proposed_reply: params.routeTemplate ?? params.classification.recommendedReply,
+    link_url: linkUrl,
+    automation_mode: 'safe_review',
+    status: 'queued',
+    trigger_reason: params.triggerReason,
+  })
+
+  return true
+}
+
+async function processMessageWebhookEvent(event: {
+  id: string
+  workspace_id: string
+  instagram_account_id: string | null
+  entry_id: string | null
+  event_type: string
+  payload_json: Record<string, unknown>
+  received_at: string
+}) {
+  const admin = getSupabaseAdmin()
+
+  if (!admin) {
+    return {
+      conversationsUpdated: 0,
+      replyWorkflowsCreated: 0,
+    }
+  }
+
+  const payload = event.payload_json
+  const sender = getObjectValue(payload.sender)
+  const recipient = getObjectValue(payload.recipient)
+  const messageObject = getObjectValue(payload.message)
+  const senderId = getStringValue(sender?.id)
+  const recipientId = getStringValue(recipient?.id)
+  const participantId =
+    [senderId, recipientId].find((value) => value && value !== event.entry_id) ?? senderId ?? recipientId
+  const isEcho = Boolean(messageObject?.is_echo) || senderId === event.entry_id
+  const messageText =
+    getStringValue(messageObject?.text) ??
+    (event.event_type === 'read'
+      ? 'Meta read event received.'
+      : event.event_type === 'delivery'
+        ? 'Meta delivery event received.'
+        : 'Meta messaging event received.')
+
+  const context = await getWorkspaceAutomationContext(event.workspace_id)
+  const classification =
+    event.event_type === 'message' && !isEcho
+      ? await classifyCommentIntent({
+          author: buildParticipantHandle(participantId),
+          message: messageText,
+          salesLink: context.links.sales ?? undefined,
+          courseLink: context.links.course ?? undefined,
+          communityLink: context.links.community ?? undefined,
+        })
+      : ({
+          intent: 'question',
+          priority: 'Normal',
+          tone: 'blue',
+          destination: 'course',
+          fanSegment: 'Education seekers',
+          recommendedReply: 'Review this DM thread and respond with the matching resource or next step.',
+          confidence: 0.58,
+          rationale: 'System-generated fallback for a non-message or echo webhook event.',
+          source: 'rules',
+        } satisfies CommentIntentClassification)
+
+  const threadId = participantId ?? `event-${event.id}`
+  const route = context.routeMap.get(classification.intent)
+  const participantHandle = buildParticipantHandle(participantId)
+  const participantName = buildParticipantName(participantId)
+  const nextAction = buildNextActionFromClassification(classification)
+
+  const { data: existingConversation } = await admin
+    .from('dm_conversations')
+    .select('id')
+    .eq('workspace_id', event.workspace_id)
+    .or(
+      participantId
+        ? `instagram_thread_id.eq.${threadId},instagram_participant_id.eq.${participantId}`
+        : `instagram_thread_id.eq.${threadId}`,
+    )
+    .limit(1)
+    .maybeSingle()
+
+  let conversationId = existingConversation?.id ?? null
+
+  if (conversationId) {
+    const { data: updatedConversation } = await admin
+      .from('dm_conversations')
+      .update({
+        instagram_thread_id: threadId,
+        instagram_participant_id: participantId,
+        participant_handle: participantHandle,
+        participant_name: participantName,
+        intent: classification.intent,
+        priority: classification.priority,
+        status:
+          event.event_type === 'read' ? 'read' : event.event_type === 'delivery' ? 'delivered' : 'open',
+        last_message_preview: messageText,
+        next_action: nextAction,
+        updated_at: event.received_at,
+        last_message_at: event.received_at,
+        source: 'meta_webhook',
+      })
+      .eq('id', conversationId)
+      .select('id')
+      .maybeSingle()
+
+    conversationId = updatedConversation?.id ?? conversationId
+  } else {
+    const { data: insertedConversation } = await admin
+      .from('dm_conversations')
+      .insert({
+        workspace_id: event.workspace_id,
+        instagram_thread_id: threadId,
+        instagram_participant_id: participantId,
+        participant_handle: participantHandle,
+        participant_name: participantName,
+        intent: classification.intent,
+        priority: classification.priority,
+        status:
+          event.event_type === 'read' ? 'read' : event.event_type === 'delivery' ? 'delivered' : 'open',
+        last_message_preview: messageText,
+        next_action: nextAction,
+        updated_at: event.received_at,
+        last_message_at: event.received_at,
+        source: 'meta_webhook',
+      })
+      .select('id')
+      .single()
+
+    conversationId = insertedConversation?.id ?? null
+  }
+
+  if (event.event_type === 'read') {
+    await admin.from('dm_link_events').insert({
+      workspace_id: event.workspace_id,
+      event_type: 'opened',
+      link_type: 'dm',
+      occurred_at: event.received_at,
+    })
+  }
+
+  if (event.event_type === 'message' && isEcho) {
+    await admin.from('dm_link_events').insert({
+      workspace_id: event.workspace_id,
+      event_type: 'sent',
+      link_type: 'dm',
+      occurred_at: event.received_at,
+    })
+  }
+
+  const replyWorkflowsCreated =
+    event.event_type === 'message' && !isEcho
+      ? Number(
+          await createReplyWorkflowRecord({
+            workspaceId: event.workspace_id,
+            instagramAccountId: event.instagram_account_id,
+            sourceEventId: event.id,
+            sourceType: 'dm',
+            sourceRecordId: conversationId,
+            channel: 'dm',
+            classification: {
+              ...classification,
+              destination: route?.destination ?? classification.destination,
+            },
+            routeTemplate: route?.responseTemplate ?? null,
+            links: context.links,
+            triggerReason: `Inbound DM detected from ${participantHandle}`,
+          }),
+        )
+      : 0
+
+  return {
+    conversationsUpdated: conversationId ? 1 : 0,
+    replyWorkflowsCreated,
+  }
+}
+
+async function processCommentWebhookEvent(event: {
+  id: string
+  workspace_id: string
+  instagram_account_id: string | null
+  event_type: string
+  payload_json: Record<string, unknown>
+  received_at: string
+}) {
+  const admin = getSupabaseAdmin()
+
+  if (!admin) {
+    return {
+      commentsUpserted: 0,
+      replyWorkflowsCreated: 0,
+    }
+  }
+
+  const payload = event.payload_json
+  const value = getObjectValue(payload.value) ?? payload
+  const item = getStringValue(value.item)?.toLowerCase()
+
+  if (item && item !== 'comment') {
+    return {
+      commentsUpserted: 0,
+      replyWorkflowsCreated: 0,
+    }
+  }
+
+  const message =
+    getStringValue(value.message) ??
+    getStringValue(value.comment_text) ??
+    getStringValue(value.text)
+
+  if (!message) {
+    return {
+      commentsUpserted: 0,
+      replyWorkflowsCreated: 0,
+    }
+  }
+
+  const context = await getWorkspaceAutomationContext(event.workspace_id)
+  const author = getObjectValue(value.from)
+  const authorId = getStringValue(author?.id) ?? getStringValue(value.sender_id)
+  const authorName = getStringValue(author?.name) ?? buildParticipantName(authorId)
+  const authorHandle = buildParticipantHandle(authorId)
+  const classification = await classifyCommentIntent({
+    author: authorName,
+    message,
+    salesLink: context.links.sales ?? undefined,
+    courseLink: context.links.course ?? undefined,
+    communityLink: context.links.community ?? undefined,
+  })
+  const route = context.routeMap.get(classification.intent)
+  const instagramPostId =
+    getStringValue(value.post_id) ??
+    getStringValue(value.media_id) ??
+    getStringValue(getObjectValue(value.post)?.id)
+  const instagramCommentId = getStringValue(value.comment_id) ?? getStringValue(value.id)
+
+  let postId: string | null = null
+  if (instagramPostId) {
+    const { data: post } = await admin
+      .from('posts')
+      .select('id')
+      .eq('instagram_post_id', instagramPostId)
+      .limit(1)
+      .maybeSingle()
+
+    postId = post?.id ?? null
+  }
+
+  const record = buildCommentRecord({
+    workspaceId: event.workspace_id,
+    postId,
+    authorHandle,
+    authorName,
+    message,
+    createdAt: event.received_at,
+    classification: {
+      ...classification,
+      destination: route?.destination ?? classification.destination,
+    },
+    instagramCommentId: instagramCommentId ?? undefined,
+    instagramMediaId: instagramPostId ?? undefined,
+  })
+
+  let commentId: string | null = null
+  if (instagramCommentId) {
+    const { data: comment } = await admin
+      .from('comments')
+      .upsert(record, { onConflict: 'instagram_comment_id' })
+      .select('id')
+      .single()
+
+    commentId = comment?.id ?? null
+  } else {
+    const { data: comment } = await admin
+      .from('comments')
+      .insert(record)
+      .select('id')
+      .single()
+
+    commentId = comment?.id ?? null
+  }
+
+  const replyWorkflowsCreated = Number(
+    await createReplyWorkflowRecord({
+      workspaceId: event.workspace_id,
+      instagramAccountId: event.instagram_account_id,
+      sourceEventId: event.id,
+      sourceType: 'comment',
+      sourceRecordId: commentId,
+      channel: 'dm',
+      classification: {
+        ...classification,
+        destination: route?.destination ?? classification.destination,
+      },
+      routeTemplate: route?.responseTemplate ?? null,
+      links: context.links,
+      triggerReason: `Comment intent ${classification.intent} detected from ${authorHandle}`,
+    }),
+  )
+
+  return {
+    commentsUpserted: commentId ? 1 : 0,
+    replyWorkflowsCreated,
+  }
+}
+
+export async function processPendingMetaWebhookEvents(limit = 25): Promise<WebhookProcessingResult> {
+  const admin = getSupabaseAdmin()
+
+  if (!admin) {
+    return {
+      processed: 0,
+      commentEvents: 0,
+      messageEvents: 0,
+      replyWorkflowsCreated: 0,
+      conversationsUpdated: 0,
+      commentsUpserted: 0,
+      skipped: 0,
+      errors: [],
+    }
+  }
+
+  const { data: events } = await admin
+    .from('meta_webhook_events')
+    .select(
+      'id, workspace_id, instagram_account_id, object, entry_id, event_family, event_type, payload_json, received_at',
+    )
+    .is('processed_at', null)
+    .order('received_at', { ascending: true })
+    .limit(limit)
+
+  const result: WebhookProcessingResult = {
+    processed: 0,
+    commentEvents: 0,
+    messageEvents: 0,
+    replyWorkflowsCreated: 0,
+    conversationsUpdated: 0,
+    commentsUpserted: 0,
+    skipped: 0,
+    errors: [],
+  }
+
+  for (const event of events ?? []) {
+    try {
+      if (!event.workspace_id) {
+        result.skipped += 1
+        await admin
+          .from('meta_webhook_events')
+          .update({ processed_at: new Date().toISOString() })
+          .eq('id', event.id)
+        continue
+      }
+
+      const payload = getObjectValue(event.payload_json) ?? {}
+      const value = getObjectValue(payload.value)
+      const isCommentEvent =
+        event.event_family === 'comments' ||
+        event.event_type.toLowerCase().includes('comment') ||
+        getStringValue(value?.item)?.toLowerCase() === 'comment'
+
+      if (event.event_family === 'messages') {
+        const processed = await processMessageWebhookEvent({
+          id: event.id,
+          workspace_id: event.workspace_id,
+          instagram_account_id: event.instagram_account_id,
+          entry_id: event.entry_id,
+          event_type: event.event_type,
+          payload_json: payload,
+          received_at: event.received_at,
+        })
+
+        result.processed += 1
+        result.messageEvents += 1
+        result.conversationsUpdated += processed.conversationsUpdated
+        result.replyWorkflowsCreated += processed.replyWorkflowsCreated
+      } else if (isCommentEvent) {
+        const processed = await processCommentWebhookEvent({
+          id: event.id,
+          workspace_id: event.workspace_id,
+          instagram_account_id: event.instagram_account_id,
+          event_type: event.event_type,
+          payload_json: payload,
+          received_at: event.received_at,
+        })
+
+        result.processed += 1
+        result.commentEvents += 1
+        result.commentsUpserted += processed.commentsUpserted
+        result.replyWorkflowsCreated += processed.replyWorkflowsCreated
+      } else {
+        result.skipped += 1
+      }
+
+      await admin
+        .from('meta_webhook_events')
+        .update({ processed_at: new Date().toISOString() })
+        .eq('id', event.id)
+    } catch (error) {
+      result.errors.push({
+        eventId: event.id,
+        message: error instanceof Error ? error.message : 'Webhook processing failed',
+      })
+    }
+  }
+
+  return result
 }
 
 export async function recordMetaWebhookEvent(params: {

@@ -275,3 +275,17 @@ export type InstagramSyncResult = {
   insightsCount?: number
   commentsClassified?: number
 }
+
+export type WebhookProcessingResult = {
+  processed: number
+  commentEvents: number
+  messageEvents: number
+  replyWorkflowsCreated: number
+  conversationsUpdated: number
+  commentsUpserted: number
+  skipped: number
+  errors: Array<{
+    eventId: string
+    message: string
+  }>
+}
