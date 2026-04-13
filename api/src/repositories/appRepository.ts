@@ -1434,6 +1434,35 @@ export async function processPendingMetaWebhookEvents(
   return result
 }
 
+export async function getRecentMetaWebhookEvents(limit = 10) {
+  const admin = getSupabaseAdmin()
+
+  if (!admin) {
+    return {
+      total: 0,
+      items: [],
+    }
+  }
+
+  const [{ count }, { data }] = await Promise.all([
+    admin
+      .from('meta_webhook_events')
+      .select('id', { count: 'exact', head: true }),
+    admin
+      .from('meta_webhook_events')
+      .select(
+        'id, workspace_id, instagram_account_id, object, entry_id, event_family, event_type, received_at, processed_at',
+      )
+      .order('received_at', { ascending: false })
+      .limit(limit),
+  ])
+
+  return {
+    total: count ?? 0,
+    items: data ?? [],
+  }
+}
+
 export async function recordMetaWebhookEvent(params: {
   object: string
   entryId?: string

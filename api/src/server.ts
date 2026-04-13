@@ -13,6 +13,7 @@ import {
   getInstagramAccounts,
   getInstagramConnectUrl,
   getMetaConfig,
+  getRecentMetaWebhookEvents,
   getOnboarding,
   getSessionFromAuthHeader,
   classifyCommentPreview,
@@ -541,6 +542,24 @@ app.post('/api/meta/webhook/reprocess', async (req, res) => {
       includeProcessed: true,
     }),
   )
+})
+
+app.get('/api/meta/webhook/events', async (req, res) => {
+  const schema = z.object({
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+  })
+
+  const parsed = schema.safeParse(req.query)
+
+  if (!parsed.success) {
+    res.status(400).json({
+      message: 'Invalid webhook events query',
+      errors: parsed.error.flatten(),
+    })
+    return
+  }
+
+  res.json(await getRecentMetaWebhookEvents(parsed.data.limit))
 })
 
 app.post('/api/ingestion-jobs/run', async (req, res) => {
